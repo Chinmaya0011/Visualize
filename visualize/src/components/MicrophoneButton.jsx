@@ -1,18 +1,25 @@
 // eslint-disable-next-line no-unused-vars
-import React, { useContext, useState } from "react";
+import React, { useContext, useState, useEffect } from "react";
 import { TranscriptionContext } from "../context/TranscriptionContext";
 
 const MicrophoneButton = () => {
   const { startRecording, stopRecording, isRecording } = useContext(TranscriptionContext);
   const [buttonText, setButtonText] = useState("Start Recording");
 
+  useEffect(() => {
+    // Update the button text whenever the recording state changes
+    if (isRecording) {
+      setButtonText("Stop Recording");
+    } else {
+      setButtonText("Start Recording");
+    }
+  }, [isRecording]);
+
   const handleClick = () => {
     if (isRecording) {
       stopRecording();
-      setButtonText("Start Recording");
     } else {
       startRecording();
-      setButtonText("Stop Recording");
     }
   };
 

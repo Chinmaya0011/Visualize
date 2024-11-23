@@ -1,120 +1,94 @@
-// eslint-disable-next-line no-unused-vars
-import React, { createContext, useState, useEffect, useRef } from 'react';
-import axios from 'axios';
+import React, { useState, useRef, useEffect } from "react";
+import axios from "axios";
 
-export const TranscriptionContext = createContext();
+// Create a React context for transcription
+const TranscriptionContext = React.createContext();
 
-// eslint-disable-next-line react/prop-types
 const TranscriptionProvider = ({ children }) => {
+  const [transcription, setTranscription] = useState(null);
   const [isRecording, setIsRecording] = useState(false);
-  const [transcription, setTranscription] = useState('');
-  const [history, setHistory] = useState([]);
-  const [isLoading, setIsLoading] = useState(false);
-  const [errorMessage, setErrorMessage] = useState('');
-
   const mediaRecorderRef = useRef(null);
   const audioChunksRef = useRef([]);
-
-  // Your Deepgram API key
-  const DEEPGRAM_API_KEY = '28efb2fe-e3f1-499e-acd5-4c870bc329e7';
-
-  // Start recording
-  const startRecording = () => {
-    setIsRecording(true);
-    navigator.mediaDevices.getUserMedia({ audio: true })
-      .then((stream) => {
+  
+  useEffect(() => {
+    // Cleanup function to stop recording if the component unmounts
+    return () => {
+      if (mediaRecorderRef.current) {
+        mediaRecorderRef.current.stop();
+      }
+    };
+  }, []);
+  
+  const startRecording = async () => {
+    if (navigator.mediaDevices) {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
         mediaRecorderRef.current = new MediaRecorder(stream);
-
+        
         mediaRecorderRef.current.ondataavailable = (event) => {
           audioChunksRef.current.push(event.data);
         };
-
-        mediaRecorderRef.current.onstop = () => {
+        
+        mediaRecorderRef.current.onstop = async () => {
           const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/wav' });
-          audioChunksRef.current = []; // Clear chunks for the next recording
-          sendAudioToDeepgram(audioBlob); // Send to Deepgram for transcription
+          await sendAudioToDeepgram(audioBlob);
         };
-
+        
         mediaRecorderRef.current.start();
-      })
-      .catch((err) => {
-        console.error('Error accessing microphone:', err);
-        setErrorMessage('Error accessing microphone');
-      });
-  };
-
-  // Stop recording
-  const stopRecording = () => {
-    setIsRecording(false);
-    if (mediaRecorderRef.current) {
-      mediaRecorderRef.current.stop();
+        setIsRecording(true);
+      } catch (error) {
+        console.error("Error starting recording: ", error);
+      }
     }
   };
 
-  // Send audio to Deepgram for transcription
+  const stopRecording = () => {
+    mediaRecorderRef.current.stop();
+    setIsRecording(false);
+  };
+
   const sendAudioToDeepgram = async (audioBlob) => {
-    setIsLoading(true);
+    const apiKey = "9d873ece6a7fe33fa99193be598045ba3d146350";
+
+    if (!apiKey) {
+      console.error("Deepgram API key is missing.");
+      return;
+    }
 
     const formData = new FormData();
-    formData.append('file', audioBlob, 'recording.wav');
+    formData.append("audio", audioBlob);
 
     try {
-      const response = await axios.post('https://api.deepgram.com/v1/listen', formData, {
-        headers: {
-          'Authorization': `Bearer ${DEEPGRAM_API_KEY}`,
-          'Content-Type': 'multipart/form-data',
-        },
-      });
-
-      const transcript = response.data.results.channels[0].alternatives[0].transcript;
-      setTranscription(transcript);
+      const response = await axios.post(
+        "https://api.deepgram.com/v1/listen",
+        formData,
+        {
+          headers: {
+            "Authorization": `Bearer ${apiKey}`,
+            "Content-Type": "multipart/form-data"
+          }
+        }
+      );
+      console.log("Transcription response:", response.data);
+      setTranscription(response.data);
     } catch (error) {
-      console.error('Error during transcription:', error);
-      setErrorMessage('Error during transcription');
-    } finally {
-      setIsLoading(false);
+      if (error.response) {
+        console.error("Error during transcription:", error.response.data);
+      } else {
+        console.error("Network error:", error.message);
+      }
     }
   };
-
-  // Save transcription to history
-  const saveTranscription = () => {
-    if (transcription) {
-      setHistory((prevHistory) => [...prevHistory, transcription]);
-      setTranscription('');
-    }
-  };
-
-  // Delete transcription from history
-  const deleteTranscription = (index) => {
-    setHistory((prevHistory) => prevHistory.filter((_, idx) => idx !== index));
-  };
-
-  // Load saved history from localStorage
-  useEffect(() => {
-    const savedHistory = JSON.parse(localStorage.getItem('history')) || [];
-    setHistory(savedHistory);
-  }, []);
-
-  // Save history to localStorage
-  useEffect(() => {
-    localStorage.setItem('history', JSON.stringify(history));
-  }, [history]);
 
   return (
-    <TranscriptionContext.Provider value={{
-      isRecording,
-      transcription,
-      history,
-      isLoading,
-      errorMessage,
-      startRecording,
-      stopRecording,
-      saveTranscription,
-      deleteTranscription,
-    }}>
+    <TranscriptionContext.Provider value={{ transcription, startRecording, stopRecording, isRecording }}>
       {children}
     </TranscriptionContext.Provider>
   );
 };
 
-export default TranscriptionProvider;
+const useTranscription = () => {
+  return React.useContext(TranscriptionContext);
+};
+
+export { TranscriptionProvider, useTranscription };
